@@ -28,7 +28,7 @@ io.on('connection', (socket) => {
     socket.on('joinRoom', (room, playerName) => {
         socket.join(room);
         if (!rooms[room]) {
-            rooms[room] = { players: [], scores: {}, currentQuestion: 0 };
+            rooms[room] = { players: [], scores: {}, currentQuestion: 0, responses: {}, quizStarted: false };
         }
         rooms[room].players.push({ id: socket.id, name: playerName });
         rooms[room].scores[playerName] = 0; // Armazena a pontuação pelo nome
@@ -39,7 +39,10 @@ io.on('connection', (socket) => {
         // Embaralha as perguntas quando a sala é criada
         if (rooms[room].players.length === 1) {
             rooms[room].shuffledQuestions = shuffleArray([...questions]); // Embaralha as perguntas
-            startQuiz(room);
+            // Inicia o cronômetro de 30 segundos
+            setTimeout(() => {
+                startQuiz(room);
+            }, 15000); // 15 segundos
         }
     });
 
@@ -47,6 +50,11 @@ io.on('connection', (socket) => {
         // Verifica se a sala e a pergunta atual existem
         if (rooms[room] && rooms[room].currentQuestion < rooms[room].shuffledQuestions.length) {
             const correctAnswer = rooms[room].shuffledQuestions[rooms[room].currentQuestion].correctAnswer;
+
+            // Armazena a resposta do jogador
+            rooms[room].responses[playerName] = answer;
+
+            // Verifica se o jogador acertou
             if (answer === correctAnswer) {
                 rooms[room].scores[playerName]++; // Adiciona ponto ao jogador usando o nome
                 // Verifica se o jogador alcançou 10 pontos
@@ -55,22 +63,21 @@ io.on('connection', (socket) => {
                     delete rooms[room]; // Remove a sala após o término
                     return; // Para não processar mais a resposta
                 }
-                socket.emit('questionAnswered'); // Notifica o jogador que respondeu
-            } else {
-                socket.emit('questionAnswered'); // Notifica o jogador que respondeu mesmo se estiver errado
             }
-            io.to(room).emit('updateScores', rooms[room].scores);
-        }
-    });
 
-    socket.on('nextQuestion', (room) => {
-        if (rooms[room]) {
-            rooms[room].currentQuestion++;
-            if (rooms[room].currentQuestion < rooms[room].shuffledQuestions.length) {
-                io.to(room).emit('newQuestion', rooms[room].shuffledQuestions[rooms[room].currentQuestion]);
-            } else {
-                io.to(room).emit('endQuiz', null); // Se não houver mais perguntas, termina o quiz
-                delete rooms[room]; // Remove a sala após o término
+            // Notifica todos os jogadores sobre a resposta
+            io.to(room).emit('updateScores', rooms[room].scores);
+
+            // Verifica se todos responderam
+            if (Object.keys(rooms[room].responses).length === rooms[room].players.length) {
+                rooms[room].currentQuestion++; // Avança para a próxima pergunta
+                rooms[room].responses = {}; // Reseta as respostas para a próxima pergunta
+                if (rooms[room].currentQuestion < rooms[room].shuffledQuestions.length) {
+                    io.to(room).emit('newQuestion', rooms[room].shuffledQuestions[rooms[room].currentQuestion]);
+                } else {
+                    io.to(room).emit('endQuiz', null); // Se não houver mais perguntas, termina o quiz
+                    delete rooms[room]; // Remove a sala após o término
+                }
             }
         }
     });
@@ -84,6 +91,7 @@ io.on('connection', (socket) => {
                 const playerName = rooms[room].players[playerIndex].name; // Obtém o nome do jogador
                 rooms[room].players.splice(playerIndex, 1);
                 delete rooms[room].scores[playerName]; // Remove a pontuação pelo nome
+                delete rooms[room].responses[playerName]; // Remove a resposta do jogador
                 io.to(room).emit('updateScores', rooms[room].scores);
                 if (rooms[room].players.length === 0) {
                     delete rooms[room]; // Remove a sala se não houver mais jogadores
@@ -95,6 +103,7 @@ io.on('connection', (socket) => {
 });
 
 function startQuiz(room) {
+    rooms[room].quizStarted = true; // Indica que o quiz começou
     io.to(room).emit('newQuestion', rooms[room].shuffledQuestions[0]);
 }
 
