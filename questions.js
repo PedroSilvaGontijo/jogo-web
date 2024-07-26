@@ -135,11 +135,6 @@ module.exports = [
         correctAnswer: "Berlim",
     },
     {
-        question: "Quem é o mais maconheiro?",
-        options: ["Izabella", "Douglas", "Ieda", "Todos"],
-        correctAnswer: "Todos",
-    },
-    {
         question: "Qual é o esporte mais popular do mundo?",
         options: ["Futebol", "Basquete", "Críquete", "Tênis"],
         correctAnswer: "Futebol",
