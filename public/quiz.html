@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="style.css">
+    <title>Quiz Multiplayer</title>
+</head>
+<body>
+    <h1>Quiz Multiplayer</h1>
+    <div id="quizContainer" style="display: none">
+        <h2 id="question"></h2>
+        <div id="options"></div>
+        <button id="nextButton" style="display: none">Próxima Pergunta</button>
+    </div>
+    <div id="scores"></div>
+    <div id="countdown" style="display: none; font-size: 24px; color: red"></div>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="js/quiz.js"></script>
+</body>
+</html>

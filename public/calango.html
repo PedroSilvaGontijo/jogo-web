@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="style.css">
+    <title>Jogo do Calango</title>
+</head>
+<body>
+    <h1>Jogo do Calango</h1>
+    <div id="gameContainer" style="display: none">
+        <h2 id="word"></h2>
+        <div id="questionContainer" style="display: none">
+            <input type="text" id="questionInput" placeholder="Digite uma pergunta">
+            <button id="submitQuestion">Enviar Pergunta</button>
+        </div>
+        <div id="answersContainer" style="display: none">
+            <h3 id="askedQuestion"></h3>
+            <div id="answers"></div>
+            <button id="voteButton" style="display: none">Votar</button>
+        </div>
+    </div>
+    <div id="scores"></div>
+    <div id="countdown" style="display: none; font-size: 24px; color: red"></div>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="js/calango.js"></script>
+</body>
+</html>

@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="css/style.css" />
+    <title>Seleção de Jogos</title>
+  </head>
+  <body>
+    <h1>Selecione o Jogo</h1>
+    <div id="gameSelectionContainer">
+      <button id="quizButton">Quiz Multiplayer</button>
+      <button id="calangoButton">Jogo do Calango</button>
+    </div>
+    <script>
+      document.getElementById("quizButton").onclick = () => {
+        window.location.href = "quiz.html";
+      };
+
+      document.getElementById("calangoButton").onclick = () => {
+        window.location.href = "calango.html";
+      };
+    </script>
+  </body>
+</html>

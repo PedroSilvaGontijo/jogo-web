@@ -1,112 +1,183 @@
-const express = require('express');
-const http = require('http');
-const socketIo = require('socket.io');
-const questions = require('./questions');
+const express = require("express");
+const http = require("http");
+const socketIo = require("socket.io");
+const path = require("path");
+
+const questions = require("./questions.js");
+const words = require("./words.js");
 
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server);
 
-const PORT = process.env.PORT || 3000;
+let quizRoom = {
+  players: {},
+  scores: {},
+  questions: questions,
+  currentQuestion: 0,
+};
 
-app.use(express.static('public'));
+let calangoRoom = {
+  players: {},
+  scores: {},
+  currentWord: "",
+  calango: "",
+  attempts: 0,
+  maxAttempts: 5,
+  words: words,
+  responses: {},
+  votes: {},
+};
 
-let rooms = {};
+app.use(express.static(path.join(__dirname, "public")));
 
-// Função para embaralhar perguntas
-function shuffleArray(array) {
-    for (let i = array.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [array[i], array[j]] = [array[j], array[i]];
+io.on("connection", (socket) => {
+  socket.on("joinRoom", (room, playerName) => {
+    socket.join(room);
+    if (room === "quizRoom") {
+      quizRoom.players[socket.id] = playerName;
+      quizRoom.scores[playerName] = 0;
+      io.to(room).emit("playerJoined", playerName);
+      if (Object.keys(quizRoom.players).length === 1) {
+        io.to(room).emit(
+          "newQuestion",
+          quizRoom.questions[quizRoom.currentQuestion]
+        );
+      }
+    } else if (room === "calangoRoom") {
+      calangoRoom.players[socket.id] = playerName;
+      calangoRoom.scores[playerName] = 0;
+      io.to(room).emit("playerJoined", playerName);
+      if (Object.keys(calangoRoom.players).length === 1) {
+        startCalangoGame(room);
+      }
     }
-    return array;
-}
+  });
 
-io.on('connection', (socket) => {
-    console.log('Um jogador se conectou:', socket.id);
+  socket.on("answer", (room, playerName, answer) => {
+    if (room === "quizRoom") {
+      const currentQuestion = quizRoom.questions[quizRoom.currentQuestion];
+      if (currentQuestion.correctOption === answer) {
+        quizRoom.scores[playerName]++;
+      }
+      io.to(room).emit("updateScores", quizRoom.scores);
+      io.to(room).emit("questionAnswered");
+    }
+  });
 
-    socket.on('joinRoom', (room, playerName) => {
-        socket.join(room);
-        if (!rooms[room]) {
-            rooms[room] = { players: [], scores: {}, currentQuestion: 0, responses: {}, quizStarted: false };
+  socket.on("nextQuestion", (room) => {
+    if (room === "quizRoom") {
+      quizRoom.currentQuestion++;
+      if (quizRoom.currentQuestion < quizRoom.questions.length) {
+        io.to(room).emit(
+          "newQuestion",
+          quizRoom.questions[quizRoom.currentQuestion]
+        );
+      } else {
+        const champion = Object.keys(quizRoom.scores).reduce((a, b) =>
+          quizRoom.scores[a] > quizRoom.scores[b] ? a : b
+        );
+        io.to(room).emit("endQuiz", champion);
+      }
+    }
+  });
+
+  socket.on("submitQuestion", (room, playerName, question) => {
+    if (room === "calangoRoom") {
+      io.to(room).emit("newQuestion", question);
+    }
+  });
+
+  socket.on("submitAnswer", (room, playerName, answer) => {
+    if (room === "calangoRoom") {
+      calangoRoom.responses[playerName] = answer;
+      if (
+        Object.keys(calangoRoom.responses).length ===
+        Object.keys(calangoRoom.players).length - 1
+      ) {
+        io.to(room).emit("displayResponses", calangoRoom.responses);
+        calangoRoom.responses = {};
+      }
+    }
+  });
+
+  socket.on("vote", (room, playerName, votedPlayer) => {
+    if (room === "calangoRoom") {
+      if (!calangoRoom.votes[votedPlayer]) {
+        calangoRoom.votes[votedPlayer] = 0;
+      }
+      calangoRoom.votes[votedPlayer]++;
+      if (
+        Object.keys(calangoRoom.votes).length ===
+        Object.keys(calangoRoom.players).length - 1
+      ) {
+        const calango = Object.keys(calangoRoom.votes).reduce((a, b) =>
+          calangoRoom.votes[a] > calangoRoom.votes[b] ? a : b
+        );
+        if (calango === calangoRoom.calango) {
+          io.to(room).emit("calangoRevealed", true, calango);
+          resetCalangoGame(room);
+        } else {
+          io.to(room).emit("calangoRevealed", false, calangoRoom.calango);
+          calangoRoom.attempts++;
+          if (calangoRoom.attempts >= calangoRoom.maxAttempts) {
+            io.to(room).emit("gameOver", calangoRoom.calango);
+            resetCalangoGame(room);
+          } else {
+            io.to(room).emit("nextRound");
+          }
         }
-        rooms[room].players.push({ id: socket.id, name: playerName });
-        rooms[room].scores[playerName] = 0; // Armazena a pontuação pelo nome
+        calangoRoom.votes = {};
+      }
+    }
+  });
 
-        socket.to(room).emit('playerJoined', playerName);
-        io.to(room).emit('updateScores', rooms[room].scores);
-
-        // Embaralha as perguntas quando a sala é criada
-        if (rooms[room].players.length === 1) {
-            rooms[room].shuffledQuestions = shuffleArray([...questions]); // Embaralha as perguntas
-            // Inicia o cronômetro de 30 segundos
-            setTimeout(() => {
-                startQuiz(room);
-            }, 15000); // 15 segundos
-        }
-    });
-
-    socket.on('answer', (room, playerName, answer) => {
-        // Verifica se a sala e a pergunta atual existem
-        if (rooms[room] && rooms[room].currentQuestion < rooms[room].shuffledQuestions.length) {
-            const correctAnswer = rooms[room].shuffledQuestions[rooms[room].currentQuestion].correctAnswer;
-
-            // Armazena a resposta do jogador
-            rooms[room].responses[playerName] = answer;
-
-            // Verifica se o jogador acertou
-            if (answer === correctAnswer) {
-                rooms[room].scores[playerName]++; // Adiciona ponto ao jogador usando o nome
-                // Verifica se o jogador alcançou 10 pontos
-                if (rooms[room].scores[playerName] === 10) {
-                    io.to(room).emit('endQuiz', playerName); // Encerra o quiz e declara o campeão
-                    delete rooms[room]; // Remove a sala após o término
-                    return; // Para não processar mais a resposta
-                }
-            }
-
-            // Notifica todos os jogadores sobre a resposta
-            io.to(room).emit('updateScores', rooms[room].scores);
-
-            // Verifica se todos responderam
-            if (Object.keys(rooms[room].responses).length === rooms[room].players.length) {
-                rooms[room].currentQuestion++; // Avança para a próxima pergunta
-                rooms[room].responses = {}; // Reseta as respostas para a próxima pergunta
-                if (rooms[room].currentQuestion < rooms[room].shuffledQuestions.length) {
-                    io.to(room).emit('newQuestion', rooms[room].shuffledQuestions[rooms[room].currentQuestion]);
-                } else {
-                    io.to(room).emit('endQuiz', null); // Se não houver mais perguntas, termina o quiz
-                    delete rooms[room]; // Remove a sala após o término
-                }
-            }
-        }
-    });
-
-    socket.on('disconnect', () => {
-        console.log('Um jogador se desconectou:', socket.id);
-        // Remover o jogador da sala e atualizar as informações
-        for (const room in rooms) {
-            const playerIndex = rooms[room].players.findIndex(player => player.id === socket.id);
-            if (playerIndex !== -1) {
-                const playerName = rooms[room].players[playerIndex].name; // Obtém o nome do jogador
-                rooms[room].players.splice(playerIndex, 1);
-                delete rooms[room].scores[playerName]; // Remove a pontuação pelo nome
-                delete rooms[room].responses[playerName]; // Remove a resposta do jogador
-                io.to(room).emit('updateScores', rooms[room].scores);
-                if (rooms[room].players.length === 0) {
-                    delete rooms[room]; // Remove a sala se não houver mais jogadores
-                }
-                break;
-            }
-        }
-    });
+  socket.on("disconnect", () => {
+    handleDisconnect(socket);
+  });
 });
 
-function startQuiz(room) {
-    rooms[room].quizStarted = true; // Indica que o quiz começou
-    io.to(room).emit('newQuestion', rooms[room].shuffledQuestions[0]);
+function startCalangoGame(room) {
+  calangoRoom.currentWord =
+    calangoRoom.words[Math.floor(Math.random() * calangoRoom.words.length)];
+  const players = Object.keys(calangoRoom.players);
+  calangoRoom.calango = players[Math.floor(Math.random() * players.length)];
+  calangoRoom.attempts = 0;
+  io.to(room).emit("calangoAssigned", calangoRoom.calango);
+  io.to(room).emit("newWord", calangoRoom.currentWord);
 }
 
-server.listen(PORT, () => {
-    console.log(`Servidor rodando na porta ${PORT}`);
+function resetCalangoGame(room) {
+  calangoRoom.currentWord = "";
+  calangoRoom.calango = "";
+  calangoRoom.attempts = 0;
+  calangoRoom.responses = {};
+  calangoRoom.votes = {};
+  io.to(room).emit("resetGame");
+}
+
+function handleDisconnect(socket) {
+  let playerName;
+
+  if (quizRoom.players[socket.id]) {
+    playerName = quizRoom.players[socket.id];
+    delete quizRoom.players[socket.id];
+    delete quizRoom.scores[playerName];
+    io.to("quizRoom").emit("playerLeft", playerName);
+  }
+
+  if (calangoRoom.players[socket.id]) {
+    playerName = calangoRoom.players[socket.id];
+    delete calangoRoom.players[socket.id];
+    delete calangoRoom.scores[playerName];
+    io.to("calangoRoom").emit("playerLeft", playerName);
+
+    if (calangoRoom.calango === socket.id) {
+      resetCalangoGame("calangoRoom");
+    }
+  }
+}
+
+server.listen(3000, () => {
+  console.log("Servidor rodando na porta 3000");
 });
